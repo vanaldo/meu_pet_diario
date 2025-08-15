@@ -6,12 +6,25 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:meu_pet_diario/providers/auth_provider.dart';
 import 'package:meu_pet_diario/screens/login_screen.dart';
 import 'package:meu_pet_diario/screens/pet_list_screen.dart';
-import 'package:meu_pet_diario/models/pet_model.dart'; // Importe a classe Pet
+import 'package:meu_pet_diario/models/pet_model.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:timezone/data/latest_all.dart' as tz;
+import 'package:timezone/timezone.dart' as tz;
+
+final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Substitua 'SUA_URL_SUPABASE' e 'SUA_KEY_ANON' pelos seus valores
+  tz.initializeTimeZones(); // Inicialização do timezone
+
+  // CORREÇÃO: Usando o ícone padrão do launcher para notificações
+  const AndroidInitializationSettings initializationSettingsAndroid = AndroidInitializationSettings('@mipmap/ic_launcher');
+  const InitializationSettings initializationSettings = InitializationSettings(
+    android: initializationSettingsAndroid,
+  );
+  await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+
   await Supabase.initialize(
     url: 'https://qgfhmodijstlilfebcvl.supabase.co',
     anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFnZmhtb2RpanN0bGlsZmViY3ZsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ2NjIzNTYsImV4cCI6MjA3MDIzODM1Nn0.lSkiMC9i6-DJBj2Jho8aKxkyJzWSeobTOEr26Q-m-1Y',
@@ -72,13 +85,13 @@ class PetShell extends StatefulWidget {
 class _PetShellState extends State<PetShell> {
   int _index = 0;
 
-late final List<Widget> _pages = [
-  const DashboardPage(),
-  const DiarioPage(),
-  const AgendaPage(),
-  const VacinasPage(),
-  const PerfilUsuarioPage(), // Alterado aqui
-];
+  late final List<Widget> _pages = [
+    const DashboardPage(),
+    const DiarioPage(),
+    const AgendaPage(),
+    const VacinasPage(),
+    const PerfilUsuarioPage(),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -109,12 +122,26 @@ late final List<Widget> _pages = [
 }
 
 // ===== MODELOS SIMPLES (in-memory) =====
+class Pet {
+  final String id;
+  final String nome;
+  final String raca;
+  final int idade;
+  final double peso;
+  final IconData icone;
+  final String sexo;
+  final String microchip;
+  final bool castrado;
+
+  Pet({required this.id, required this.nome, required this.raca, required this.idade, required this.peso, this.icone = Icons.pets, required this.sexo, required this.microchip, required this.castrado});
+}
+
 class DiarioEntry {
   final DateTime data;
   final String titulo;
   final String nota;
   final IconData icone;
-  final String petId; // Adicione o petId
+  final String petId;
   DiarioEntry({required this.data, required this.titulo, required this.nota, required this.petId, this.icone = Icons.check_circle});
 }
 
@@ -123,7 +150,7 @@ class EventoAgenda {
   final String titulo;
   final String local;
   final IconData icone;
-  final String petId; // Adicione o petId
+  final String petId;
   EventoAgenda({required this.quando, required this.titulo, required this.local, required this.petId, this.icone = Icons.event});
 }
 
@@ -131,14 +158,14 @@ class VacinaItem {
   final String nome;
   final DateTime? aplicadaEm;
   final DateTime? proxima;
-  final String petId; // Adicione o petId
+  final String petId;
   VacinaItem({required this.nome, this.aplicadaEm, this.proxima, required this.petId});
 }
 
 // ===== DADOS MOCK =====
 final List<Pet> _pets = [
-  Pet(id: 'thor', nome: 'Thor', raca: 'SRD', idade: 3, peso: 12.5),
-  Pet(id: 'luna', nome: 'Luna', raca: 'Siamês', idade: 2, peso: 4.2),
+  Pet(id: 'thor', nome: 'Thor', raca: 'SRD', idade: 3, peso: 12.5, sexo: 'Macho', microchip: '000123456789', castrado: true),
+  Pet(id: 'luna', nome: 'Luna', raca: 'Siamês', idade: 2, peso: 4.2, sexo: 'Fêmea', microchip: '000987654321', castrado: true),
 ];
 
 final List<DiarioEntry> _diario = [
@@ -149,7 +176,7 @@ final List<DiarioEntry> _diario = [
 
 final List<EventoAgenda> _agenda = [
   EventoAgenda(quando: DateTime.now().add(const Duration(days: 2, hours: 3)), titulo: 'Consulta veterinária', local: 'Clínica Amigo Pet', icone: Icons.local_hospital, petId: 'thor'),
-  EventoAgenda(quando: DateTime.now().add(const Duration(days: 15)), titulo: 'Tosa', local: 'PetShop Felicidade', icone: Icons.cut, petId: 'thor'),
+  EventoAgenda(quando: DateTime.now().subtract(const Duration(days: 1)), titulo: 'Tosa', local: 'PetShop Felicidade', icone: Icons.cut, petId: 'thor'),
   EventoAgenda(quando: DateTime.now().add(const Duration(days: 5)), titulo: 'Exame de rotina', local: 'Clínica Gatos & Cia', icone: Icons.local_hospital, petId: 'luna'),
 ];
 
@@ -183,7 +210,8 @@ class SectionTitle extends StatelessWidget {
 class CardTile extends StatelessWidget {
   final Widget child;
   final EdgeInsets padding;
-  const CardTile({super.key, required this.child, this.padding = const EdgeInsets.all(16)});
+  final void Function()? onTap;
+  const CardTile({super.key, required this.child, this.padding = const EdgeInsets.all(16), this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -192,14 +220,14 @@ class CardTile extends StatelessWidget {
       child: Card(
         elevation: 0,
         clipBehavior: Clip.antiAlias,
-        child: Padding(padding: padding, child: child),
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(padding: padding, child: child),
+        ),
       ),
     );
   }
 }
-
-// lib/main.dart
-// (Mantenha todo o resto do seu código igual)
 
 // ===== PÁGINAS =====
 class DashboardPage extends StatefulWidget {
@@ -213,92 +241,84 @@ class _DashboardPageState extends State<DashboardPage> {
   Pet? _selectedPet;
 
   @override
+  void initState() {
+    super.initState();
+    _selectedPet = _pets.first;
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Column(
+    return ListView(
       children: [
-        // Se nenhum pet estiver selecionado, mostre a tela "limpa"
-        if (_selectedPet == null)
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Ícone da patinha e botão, conforme o seu desenho
-                  Card(
-                    elevation: 0,
-                    clipBehavior: Clip.antiAlias,
-                    child: InkWell(
-                      onTap: () => _showPetSelectionSheet(context),
-                      child: Padding(
-                        padding: const EdgeInsets.all(24.0),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          
-                          children: [
-                            const Icon(Icons.pets, size: 48),
-                            const SizedBox(height: 12),
-                            Text(
-                              'Selecione seu pet',
-                              style: Theme.of(context).textTheme.titleLarge,
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          )
-        // Se um pet estiver selecionado, mostre o resumo completo
+        // O seletor de pets ou detalhes do pet selecionado
+        if (_selectedPet != null)
+          _buildPetDetailsCard(context, _selectedPet!)
         else
+          _buildPetSelectorCard(context),
+
+        // Seção de compromissos próximos, visível em ambos os casos
+        const SectionTitle('Compromissos Próximos', icon: Icons.event),
+        ..._buildHojeSectionAllPets(context),
+
+        // As outras seções só aparecem se um pet estiver selecionado
+        if (_selectedPet != null)
+          ...[
+            const SectionTitle('Próximas Vacinas', icon: Icons.vaccines),
+            ..._buildVacinasSection(context, _selectedPet!),
+            const SectionTitle('Últimos registros do diário', icon: Icons.edit_note),
+            ..._buildDiarioSection(context, _selectedPet!),
+            const SizedBox(height: 24),
+          ],
+      ],
+    );
+  }
+
+  Widget _buildPetSelectorCard(BuildContext context) {
+    final hasPets = _pets.isNotEmpty;
+    final text = hasPets ? 'Selecione seu pet' : 'Adicione seu pet';
+
+    return CardTile(
+      onTap: () => _showPetSelectionSheet(context),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.pets, size: 32, color: Theme.of(context).colorScheme.primary),
+          const SizedBox(width: 16),
+          Text(text, style: Theme.of(context).textTheme.titleLarge),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPetDetailsCard(BuildContext context, Pet pet) {
+    return CardTile(
+      child: Row(
+        children: [
+          InkWell(
+            onTap: () => _showPetSelectionSheet(context),
+            borderRadius: BorderRadius.circular(34),
+            child: CircleAvatar(
+              radius: 34,
+              child: Icon(pet.icone, size: 32),
+            ),
+          ),
+          const SizedBox(width: 16),
           Expanded(
-            child: ListView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                CardTile(
-                  child: Row(
-                    children: [
-                      // O ícone da patinha agora funciona como um seletor
-                      InkWell(
-                        onTap: () => _showPetSelectionSheet(context),
-                        borderRadius: BorderRadius.circular(34),
-                        child: CircleAvatar(
-                          radius: 34,
-                          child: Icon(_selectedPet!.icone, size: 32),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                          Text(_selectedPet!.nome, style: Theme.of(context).textTheme.titleLarge),
-                          const SizedBox(height: 4),
-                          Text('${_selectedPet!.raca} • ${_selectedPet!.idade} anos • ${_selectedPet!.peso} kg', style: Theme.of(context).textTheme.bodyMedium),
-                        ]),
-                      ),
-                      FilledButton.tonal(
-                        onPressed: () => _openAddDiario(context),
-                        child: const Row(children: [Icon(Icons.add), SizedBox(width: 6), Text('Novo registro')]),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SectionTitle('Hoje'),
-                ..._buildHojeSection(context, _selectedPet!),
-
-                const SectionTitle('Próximas vacinas'),
-                ..._buildVacinasSection(context, _selectedPet!),
-
-                const SectionTitle('Últimos registros do diário'),
-                ..._buildDiarioSection(context, _selectedPet!),
-
-                const SizedBox(height: 24),
+                Text(pet.nome, style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 4),
+                Text('${pet.raca} • ${pet.idade} anos • ${pet.peso} kg', style: Theme.of(context).textTheme.bodyMedium),
               ],
             ),
           ),
-      ],
+          FilledButton.tonal(
+            onPressed: () => _openAddDiario(context, petId: pet.id),
+            child: const Row(children: [Icon(Icons.add), SizedBox(width: 6), Text('Novo registro')]),
+          ),
+        ],
+      ),
     );
   }
 
@@ -338,40 +358,63 @@ class _DashboardPageState extends State<DashboardPage> {
     );
   }
 
-  List<Widget> _buildHojeSection(BuildContext context, Pet pet) {
-    final todayAgenda = _agenda.where((e) => e.petId == pet.id && _isSameDay(e.quando, DateTime.now())).toList();
-    if (todayAgenda.isEmpty) {
-      return [const CardTile(child: Text('Sem eventos para hoje. 👌'))];
+  // Novo método para exibir compromissos de todos os pets
+  List<Widget> _buildHojeSectionAllPets(BuildContext context) {
+    final proximosEventos = _agenda.where((e) => e.quando.isAfter(DateTime.now())).toList();
+    proximosEventos.sort((a, b) => a.quando.compareTo(b.quando)); // Ordena por data
+
+    if (proximosEventos.isEmpty) {
+      return [const CardTile(child: Text('Sem eventos próximos. 🎉'))];
     }
-    return todayAgenda.map((e) => CardTile(
-      child: Row(children: [
-        Icon(e.icone),
-        const SizedBox(width: 12),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(e.titulo, style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 4),
-          Text('${_fmtDataHora(e.quando)} • ${e.local}')
-        ])),
-      ]),
-    )).toList();
+
+    return proximosEventos.take(3).map((e) {
+      final pet = _pets.firstWhere((p) => p.id == e.petId);
+      return CardTile(
+        child: Row(children: [
+          Icon(e.icone),
+          const SizedBox(width: 12),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(e.titulo, style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 4),
+            Text('${_fmtDataHora(e.quando)} • ${e.local} (${pet.nome})')
+          ])),
+        ]),
+      );
+    }).toList();
   }
 
   List<Widget> _buildVacinasSection(BuildContext context, Pet pet) {
-    final proximasVacinas = _vacinas.where((v) => v.petId == pet.id && v.proxima != null && v.proxima!.isBefore(DateTime.now().add(const Duration(days: 30)))).toList();
+    final proximasVacinas = _vacinas.where((v) => v.petId == pet.id && v.proxima != null && v.proxima!.isAfter(DateTime.now())).toList();
+    proximasVacinas.sort((a, b) => a.proxima!.compareTo(b.proxima!));
     if (proximasVacinas.isEmpty) {
       return [const CardTile(child: Text('Sem vacinas próximas.'))];
     }
-    return proximasVacinas.map((v) => CardTile(
-      child: Row(children: [
-        const Icon(Icons.vaccines),
-        const SizedBox(width: 12),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(v.nome, style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 4),
-          Text('Próxima: ${_fmtData(v.proxima)}'),
-        ])),
-      ]),
-    )).toList();
+    return proximasVacinas.take(3).map((v) {
+      final isOverdue = v.proxima != null && v.proxima!.isBefore(DateTime.now());
+      final color = isOverdue ? Colors.red.shade700 : null;
+
+      return CardTile(
+        child: Row(
+          children: [
+            Icon(Icons.vaccines, color: color),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(v.nome, style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Próxima: ${_fmtData(v.proxima)} (${pet.nome})',
+                    style: TextStyle(color: color),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }).toList();
   }
 
   List<Widget> _buildDiarioSection(BuildContext context, Pet pet) {
@@ -388,14 +431,12 @@ class _DashboardPageState extends State<DashboardPage> {
           const SizedBox(height: 4),
           Text(d.nota),
           const SizedBox(height: 6),
-          Text(_fmtDataHora(d.data), style: Theme.of(context).textTheme.bodySmall),
+          Text('${_fmtDataHora(d.data)} (${pet.nome})', style: Theme.of(context).textTheme.bodySmall),
         ])),
       ]),
     )).toList();
   }
 }
-
-// (Mantenha as classes DiarioPage, AgendaPage, VacinasPage, PerfilPetPage, helpers e dialogs inalteradas)
 
 class DiarioPage extends StatefulWidget {
   const DiarioPage({super.key});
@@ -405,6 +446,12 @@ class DiarioPage extends StatefulWidget {
 }
 
 class _DiarioPageState extends State<DiarioPage> {
+  void _deleteDiarioEntry(DiarioEntry entry) {
+    setState(() {
+      _diario.remove(entry);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -412,13 +459,17 @@ class _DiarioPageState extends State<DiarioPage> {
         children: [
           const SectionTitle('Registros do diário', icon: Icons.edit_note),
           ..._diario.map((d) => CardTile(
-                child: ListTile(
-                  leading: Icon(d.icone),
-                  title: Text(d.titulo),
-                  subtitle: Text('${_fmtDataHora(d.data)}\n${d.nota}'),
-                  isThreeLine: true,
-                ),
-              )),
+            child: ListTile(
+              leading: Icon(d.icone),
+              title: Text(d.titulo),
+              subtitle: Text('${_fmtDataHora(d.data)}\n${d.nota}'),
+              isThreeLine: true,
+              trailing: IconButton(
+                icon: const Icon(Icons.delete),
+                onPressed: () => _deleteDiarioEntry(d),
+              ),
+            ),
+          )),
           if (_diario.isEmpty) const CardTile(child: Text('Sem registros ainda.')),
           const SizedBox(height: 80),
         ],
@@ -440,18 +491,36 @@ class AgendaPage extends StatefulWidget {
 }
 
 class _AgendaPageState extends State<AgendaPage> {
+  void _deleteAgendaEvent(EventoAgenda event) {
+    setState(() {
+      _agenda.remove(event);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: ListView(children: [
         const SectionTitle('Compromissos', icon: Icons.event),
-        ..._agenda.map((e) => CardTile(
-              child: ListTile(
-                leading: Icon(e.icone),
-                title: Text(e.titulo),
-                subtitle: Text('${_fmtDataHora(e.quando)} • ${e.local}'),
+        ..._agenda.map((e) {
+          final isOverdue = e.quando.isBefore(DateTime.now());
+          final color = isOverdue ? Colors.red.shade700 : null;
+
+          return CardTile(
+            child: ListTile(
+              leading: Icon(e.icone, color: color),
+              title: Text(e.titulo),
+              subtitle: Text(
+                '${_fmtDataHora(e.quando)} • ${e.local}',
+                style: TextStyle(color: color),
               ),
-            )),
+              trailing: IconButton(
+                icon: const Icon(Icons.delete),
+                onPressed: () => _deleteAgendaEvent(e),
+              ),
+            ),
+          );
+        }),
         if (_agenda.isEmpty) const CardTile(child: Text('Nada agendado.')),
         const SizedBox(height: 80),
       ]),
@@ -472,19 +541,37 @@ class VacinasPage extends StatefulWidget {
 }
 
 class _VacinasPageState extends State<VacinasPage> {
+  void _deleteVacina(VacinaItem vacina) {
+    setState(() {
+      _vacinas.remove(vacina);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: ListView(children: [
         const SectionTitle('Carteira de Vacinação', icon: Icons.vaccines),
-        ..._vacinas.map((v) => CardTile(
-              child: ListTile(
-                leading: const Icon(Icons.vaccines),
-                title: Text(v.nome),
-                subtitle: Text('Aplicada: ${_fmtData(v.aplicadaEm)}\nPróxima: ${_fmtData(v.proxima)}'),
-                isThreeLine: true,
+        ..._vacinas.map((v) {
+          final isOverdue = v.proxima != null && v.proxima!.isBefore(DateTime.now());
+          final color = isOverdue ? Colors.red.shade700 : null;
+
+          return CardTile(
+            child: ListTile(
+              leading: Icon(Icons.vaccines, color: color),
+              title: Text(v.nome),
+              subtitle: Text(
+                'Aplicada: ${_fmtData(v.aplicadaEm)}\nPróxima: ${_fmtData(v.proxima)}',
+                style: TextStyle(color: color),
               ),
-            )),
+              isThreeLine: true,
+              trailing: IconButton(
+                icon: const Icon(Icons.delete),
+                onPressed: () => _deleteVacina(v),
+              ),
+            ),
+          );
+        }),
         if (_vacinas.isEmpty) const CardTile(child: Text('Nenhuma vacina cadastrada.')),
         const SizedBox(height: 80),
       ]),
@@ -505,8 +592,6 @@ class PerfilUsuarioPage extends ConsumerWidget {
     final authNotifier = ref.watch(authProvider.notifier);
     final user = Supabase.instance.client.auth.currentUser;
     
-    // Dados do usuário de exemplo. Quando a integração for completa,
-    // você pode carregar estes dados do banco de dados do Supabase.
     final userName = user?.email?.split('@').first ?? 'Usuário';
     final userEmail = user?.email ?? 'N/A';
 
@@ -585,7 +670,7 @@ bool _isSameDay(DateTime a, DateTime b) {
 }
 
 // ===== DIALOGS / FORMS =====
-void _openAddDiario(BuildContext context, {VoidCallback? onAdded}) {
+void _openAddDiario(BuildContext context, {String? petId, VoidCallback? onAdded}) {
   final titleCtrl = TextEditingController();
   final noteCtrl = TextEditingController();
   IconData selectedIcon = Icons.check_circle;
@@ -616,7 +701,7 @@ void _openAddDiario(BuildContext context, {VoidCallback? onAdded}) {
             ]),
           ],
           onSubmit: () {
-            //_diario.insert(0, DiarioEntry(data: DateTime.now(), titulo: titleCtrl.text.trim(), nota: noteCtrl.text.trim(), icone: selectedIcon));
+            _diario.insert(0, DiarioEntry(data: DateTime.now(), titulo: titleCtrl.text.trim(), nota: noteCtrl.text.trim(), icone: selectedIcon, petId: petId ?? 'thor'));
             Navigator.pop(ctx);
             onAdded?.call();
           },
@@ -626,7 +711,7 @@ void _openAddDiario(BuildContext context, {VoidCallback? onAdded}) {
   );
 }
 
-void _openAddAgenda(BuildContext context, {VoidCallback? onAdded}) {
+void _openAddAgenda(BuildContext context, {String? petId, VoidCallback? onAdded}) {
   final titleCtrl = TextEditingController();
   final localCtrl = TextEditingController();
   DateTime selected = DateTime.now().add(const Duration(hours: 2));
@@ -663,7 +748,17 @@ void _openAddAgenda(BuildContext context, {VoidCallback? onAdded}) {
             ])
           ],
           onSubmit: () {
-            //_agenda.add(EventoAgenda(quando: selected, titulo: titleCtrl.text.trim(), local: localCtrl.text.trim()));
+            // Adicionado: agendar notificação antes de adicionar ao array e fechar o modal
+            final reminderDate = selected.subtract(const Duration(hours: 1));
+            if (reminderDate.isAfter(DateTime.now())) {
+              _scheduleNotification(
+                'Lembrete de compromisso!',
+                'Seu pet tem o compromisso "${titleCtrl.text.trim()}" em uma hora.',
+                reminderDate,
+                id: _agenda.length, // Usar um ID único
+              );
+            }
+            _agenda.add(EventoAgenda(quando: selected, titulo: titleCtrl.text.trim(), local: localCtrl.text.trim(), petId: petId ?? 'thor'));
             Navigator.pop(ctx);
             onAdded?.call();
           },
@@ -673,7 +768,7 @@ void _openAddAgenda(BuildContext context, {VoidCallback? onAdded}) {
   );
 }
 
-void _openAddVacina(BuildContext context, {VoidCallback? onAdded}) {
+void _openAddVacina(BuildContext context, {String? petId, VoidCallback? onAdded}) {
   final nomeCtrl = TextEditingController();
   DateTime? aplicada;
   DateTime? proxima;
@@ -724,7 +819,7 @@ void _openAddVacina(BuildContext context, {VoidCallback? onAdded}) {
             ]),
           ],
           onSubmit: () {
-            //_vacinas.add(VacinaItem(nome: nomeCtrl.text.trim(), aplicadaEm: aplicada, proxima: proxima));
+            _vacinas.add(VacinaItem(nome: nomeCtrl.text.trim(), aplicadaEm: aplicada, proxima: proxima, petId: petId ?? 'thor'));
             Navigator.pop(ctx);
             onAdded?.call();
           },
@@ -762,4 +857,29 @@ class _FormSheet extends StatelessWidget {
       ),
     );
   }
+}
+
+// Funções de ajuda
+Future<void> _scheduleNotification(String title, String body, DateTime scheduledDate, {int id = 0}) async {
+  const AndroidNotificationDetails androidPlatformChannelSpecifics = AndroidNotificationDetails(
+    'your_channel_id',
+    'your_channel_name',
+    channelDescription: 'your_channel_description',
+    importance: Importance.max,
+    priority: Priority.high,
+    showWhen: false,
+  );
+
+  const NotificationDetails platformChannelSpecifics = NotificationDetails(android: androidPlatformChannelSpecifics);
+
+  // CORREÇÃO: Usando zonedSchedule para agendar notificações
+  await flutterLocalNotificationsPlugin.zonedSchedule(
+    id,
+    title,
+    body,
+    tz.TZDateTime.from(scheduledDate, tz.local),
+    platformChannelSpecifics,
+    androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+    uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+  );
 }

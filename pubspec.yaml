@@ -14,6 +14,8 @@ dependencies:
   supabase_flutter: ^2.9.1
   flutter_riverpod: ^2.5.1
   freezed_annotation: ^2.4.1  # <-- Adicione esta linha
+  flutter_local_notifications: ^17.1.2
+  timezone: ^0.9.3
 
 dev_dependencies:
   flutter_test:
